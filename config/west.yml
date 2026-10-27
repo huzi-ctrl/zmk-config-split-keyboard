@@ -10,9 +10,5 @@ manifest:
     - name: zmk
       remote: zmkfirmware
       import: app/west.yml
-    - name: zmk-config
-      url: https://github.com/huzi-ctrl/zmk-config.git
-      revision: main
-      path: modules/zmk-config
   self:
     path: config
