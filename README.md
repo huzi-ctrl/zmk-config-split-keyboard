@@ -119,7 +119,7 @@ The OLED display acts as a live status dashboard:
 3. **Flash the Right Half (Peripheral)**:
    - Connect the **Right Half** XIAO to your computer over USB-C.
    - **Double-click the `RST` button** on the Right XIAO.
-   - Drag and drop **`pkb_right-seeeduino_xiao_ble-zmk.uf2`** onto the USB drive.
+   - Drag and drop **`pkb_right-seeeduino_xiao_ble-zmk.uf2`** onto the USB drive
 
 4. **Power On & Pair**:
    - Turn on both halves. The right half will automatically connect to the left half.
