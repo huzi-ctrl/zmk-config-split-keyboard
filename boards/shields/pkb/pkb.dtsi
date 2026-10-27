@@ -7,10 +7,12 @@
 
 / {
     chosen {
+        zephyr,display = &oled;
         zmk,kscan = &kscan0;
         zmk,physical-layout = &default_layout;
-        zmk,underglow = &led_strip; 
+        zmk,underglow = &led_strip;
     };
+
     default_layout: physical_layout0 {
         compatible = "zmk,physical-layout";
         display-name = "PKB 40% Standard";
@@ -18,31 +20,22 @@
     };
 
     kscan0: kscan0 {
-        // If the hardware does not use a switch matrix, change this to the
-        // appropriate driver and update the properties below to match.
-        // See https://zmk.dev/docs/config/kscan for supported key scan drivers.
         compatible = "zmk,kscan-gpio-matrix";
-        // Set this to "col2row" or "row2col" to match the hardware. If using
-        // "row2col", change the col-gpios in the _left.overlay and _right.overlay
-        // files to (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN) and the row-gpios here to
-        // GPIO_ACTIVE_HIGH.
+        // With D1..D21 flipped (Anode on ROW, Cathode on COL):
+        // XIAO drives COL0..COL4 active-low (0V when active) and PCF8574AP
+        // reads ROW0..ROW4 active-low (pulled high to +3.3V internally by PCF8574AP).
         diode-direction = "col2row";
         wakeup-source;
 
-        // Replace these comments with the GPIO pins in the matrix.
-        // See https://zmk.dev/docs/development/hardware-integration/new-shield#shield-overlays
         row-gpios
-            = <&xiao_d 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-            , <&xiao_d 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-            , <&xiao_d 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-            , <&xiao_d 7 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-            , <&xiao_d 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+            = <&pcf8574 0 GPIO_ACTIVE_LOW> // ROW0 -> U4 P0 (Pin 4)
+            , <&pcf8574 1 GPIO_ACTIVE_LOW> // ROW1 -> U4 P1 (Pin 5)
+            , <&pcf8574 2 GPIO_ACTIVE_LOW> // ROW2 -> U4 P2 (Pin 6)
+            , <&pcf8574 3 GPIO_ACTIVE_LOW> // ROW3 -> U4 P3 (Pin 7)
+            , <&pcf8574 4 GPIO_ACTIVE_LOW> // ROW4 -> U4 P4 (Pin 9)
             ;
     };
-};
 
-
-/ {
     default_transform: keymap_transform_0 {
         compatible = "zmk,matrix-transform";
         columns = <10>; // 5 columns on the left + 5 columns on the right
@@ -58,27 +51,77 @@
         >;
     };
 
-};
-
-/ {
     ext-power {
         compatible = "zmk,ext-power-generic";
-        label = "EXT_POWER";
-        control-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>; 
+        // P1.13_D8_SCK (Pin 9) drives Q2 (NMOS) -> Q4 (PMOS) to switch VBAT to VLED
+        control-gpios = <&xiao_d 8 GPIO_ACTIVE_HIGH>;
     };
 };
 
 &pinctrl {
+    // I2C1 (xiao_i2c) remapped from D4/D5 (used by COL3/COL4) to D9 (SCL) and D10 (SDA)
+    i2c1_default: i2c1_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 1, 15)>, // P1.15_D10_MOSI (Pin 11) -> SDA
+                    <NRF_PSEL(TWIM_SCL, 1, 14)>; // P1.14_D9_MISO  (Pin 10) -> SCL
+        };
+    };
+    i2c1_sleep: i2c1_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 1, 15)>,
+                    <NRF_PSEL(TWIM_SCL, 1, 14)>;
+            low-power-enable;
+        };
+    };
+
+    // SPI2 MOSI mapped to P0.02_A0_D0 (Pin 1) -> DLED via R4 (330 ohm)
     spi2_default: spi2_default {
         group1 {
-            psels = <NRF_PSEL(SPIM_MOSI, 1, 11)>; 
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 2)>;
         };
     };
     spi2_sleep: spi2_sleep {
         group1 {
-            psels = <NRF_PSEL(SPIM_MOSI, 1, 11)>;
+            psels = <NRF_PSEL(SPIM_MOSI, 0, 2)>;
             low-power-enable;
         };
+    };
+};
+
+&xiao_i2c {
+    status = "okay";
+    pinctrl-0 = <&i2c1_default>;
+    pinctrl-1 = <&i2c1_sleep>;
+    pinctrl-names = "default", "sleep";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    // U4: PCF8574AP with A0=A1=A2=GND -> I2C address 0x38
+    // (Note: If using a non-'A' PCF8574 chip, change 0x38 to 0x20)
+    pcf8574: pcf8574@38 {
+        compatible = "nxp,pcf857x";
+        status = "okay";
+        reg = <0x38>;
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <8>;
+        int-gpios = <&xiao_d 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; // P1.11_D6_TX (Pin 7) -> INT
+    };
+
+    // J4: OLED Header (SSD1306 128x32)
+    oled: ssd1306@3c {
+        compatible = "solomon,ssd1306fb";
+        reg = <0x3c>;
+        width = <128>;
+        height = <32>;
+        segment-offset = <0>;
+        page-offset = <0>;
+        display-offset = <0>;
+        multiplex-ratio = <31>;
+        segment-remap;
+        com-invdir;
+        com-sequential;
+        inversion-on;
+        prechargep = <0x22>;
     };
 };
 
@@ -94,7 +137,7 @@
         label = "SK6812";
         reg = <0>;
         spi-max-frequency = <4000000>;
-        chain-length = <21>; // 21 LEDs per board half!
+        chain-length = <21>; // 21 SK6812MINI LEDs per board half
         spi-one-frame = <0x70>;
         spi-zero-frame = <0x40>;
         color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
